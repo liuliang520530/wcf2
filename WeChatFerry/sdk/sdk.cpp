@@ -86,7 +86,7 @@ static std::wstring GetDllPath(bool debug)
   return path.wstring();
 }
 
-int WxInitSDK(DWORD pid, bool debug, int port)
+int WxInitSDKWithPid(DWORD pid, bool debug, int port)
 {
   if (!ShowDisclaimer())
   {
@@ -133,7 +133,7 @@ int WxInitSDK(DWORD pid, bool debug, int port)
   return 0;
 }
 
-int WxInitSDK(const wchar_t *wxPath, bool debug, int port)
+int WxInitSDKWithPath(const wchar_t *wxPath, bool debug, int port)
 {
   if (!ShowDisclaimer())
   {
@@ -199,7 +199,7 @@ int WxInitSDK(const wchar_t *wxPath, bool debug, int port)
   return 0;
 }
 
-int WxInitSDK(bool debug, int port)
+int WxInitSDKDefault(bool debug, int port)
 {
   int status = 0;
   DWORD wcPid = 0;
