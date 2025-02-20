@@ -16,14 +16,6 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 获取版本号和微信版本号
-        run: |
-          $version_full = (Select-String -Path "WeChatFerry/spy/spy.rc" -Pattern 'VALUE "FileVersion", "(.*)"').Matches.Groups[1].Value.Trim()
-          $version = $version_full -replace '(\d+\.\d+\.\d+)\.\d+', '$1'
-          echo "version=$version" >> $env:GITHUB_ENV
-          echo "Program Version: $version"
-        shell: pwsh
-
       - name: 设置 Visual Studio 2019
         uses: microsoft/setup-msbuild@v2
         with:
@@ -58,28 +50,42 @@ jobs:
 
       - name: 构建 sdk.dll
         run: |
-          msbuild WeChatFerry/WeChatFerry.sln `
+          msbuild WeChatFerry/sdk.vcxproj `
             /p:Configuration=Release `
             /p:Platform="x64" `
             /p:VcpkgTriplet="x64-windows-static" `
             /p:VcpkgEnableManifest=true `
-            /target:WeChatFerry:sdk `
             /verbosity:minimal
+        shell: pwsh
+
+      - name: 复制 sdk.dll 到仓库根目录的 dll 文件夹
+        run: |
+          New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/dll"
+          Copy-Item -Path "WeChatFerry/Out/sdk.dll" -Destination "${{ github.workspace }}/dll/sdk.dll" -Force
         shell: pwsh
 
       - name: 打包 sdk.dll
         run: |
           New-Item -ItemType Directory -Force -Path "WeChatFerry/tmp"
-          Compress-Archive -Path "WeChatFerry/Out/sdk.dll" -DestinationPath "WeChatFerry/tmp/sdk-v${{ env.version }}.zip"
+          Compress-Archive -Path "WeChatFerry/Out/sdk.dll" -DestinationPath "WeChatFerry/tmp/sdk.zip"
+        shell: pwsh
+
+      - name: 提交更改到仓库
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add dll/sdk.dll
+          git commit -m "Update sdk.dll in dll folder"
+          git push
         shell: pwsh
 
       - name: 发布 sdk.dll 到 Github Releases
         uses: ncipollo/release-action@main
         with:
-          name: sdk-v${{ env.version }}
-          tag: sdk-v${{ env.version }}
+          name: sdk-release
+          tag: sdk-latest
           token: ${{ secrets.REPO_TOKEN }}
           allowUpdates: true
-          artifacts: "WeChatFerry/tmp/sdk-v${{ env.version }}.zip"
+          artifacts: "WeChatFerry/tmp/sdk.zip"
           body: |
-            sdk.dll 版本：`v${{ env.version }}`
+            sdk.dll 构建版本
