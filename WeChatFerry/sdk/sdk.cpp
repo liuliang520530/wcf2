@@ -211,7 +211,7 @@ int WxInitSDKDefault(bool debug, int port)
     return status;
   }
 
-  return WxInitSDK(wcPid, debug, port);
+  return WxInitSDKWithPid(wcPid, debug, port);
 }
 
 int WxDestroySDK()
