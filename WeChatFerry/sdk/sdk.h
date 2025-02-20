@@ -5,10 +5,10 @@ extern "C"
 {
 #endif
 
-  __declspec(dllexport) int WxInitSDKDefault(bool debug, int port);
-  __declspec(dllexport) int WxInitSDKWithPid(DWORD pid, bool debug, int port);
-  __declspec(dllexport) int WxInitSDKWithPath(const wchar_t *wxPath, bool debug, int port);
-  __declspec(dllexport) int WxDestroySDK();
+  int WxInitSDKDefault(bool debug, int port);
+  int WxInitSDKWithPid(DWORD pid, bool debug, int port);
+  int WxInitSDKWithPath(const wchar_t *wxPath, bool debug, int port);
+  int WxDestroySDK();
 
 #ifdef __cplusplus
 }
