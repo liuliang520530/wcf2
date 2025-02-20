@@ -1,0 +1,85 @@
+name: Build-WeChatFerry-SDK
+
+on:
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level to use'
+        required: true
+        default: 'warning'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 获取版本号和微信版本号
+        run: |
+          $version_full = (Select-String -Path "WeChatFerry/spy/spy.rc" -Pattern 'VALUE "FileVersion", "(.*)"').Matches.Groups[1].Value.Trim()
+          $version = $version_full -replace '(\d+\.\d+\.\d+)\.\d+', '$1'
+          echo "version=$version" >> $env:GITHUB_ENV
+          echo "Program Version: $version"
+        shell: pwsh
+
+      - name: 设置 Visual Studio 2019
+        uses: microsoft/setup-msbuild@v2
+        with:
+          vs-version: "16.0" # 16.x 对应 Visual Studio 2019
+
+      - name: 设置缓存
+        id: cache-vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:/Tools/vcpkg
+            ${{ github.workspace }}/WeChatFerry/vcpkg_installed
+          key: vcpkg-${{ hashFiles('WeChatFerry/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-
+
+      - name: 安装 vcpkg 并初始化依赖项
+        run: |
+          if (!(Test-Path -Path 'C:/Tools')) {
+            New-Item -ItemType Directory -Force -Path 'C:/Tools'
+          }
+          cd C:/Tools
+          if (!(Test-Path -Path 'C:/Tools/vcpkg')) {
+            git clone https://github.com/microsoft/vcpkg
+          }
+          .\vcpkg\bootstrap-vcpkg.bat
+          echo "VCPKG_ROOT=C:/Tools/vcpkg" >> $GITHUB_ENV
+          $env:VCPKG_ROOT = 'C:/Tools/vcpkg'
+          cd ${{ github.workspace }}/WeChatFerry
+          C:/Tools/vcpkg/vcpkg install --triplet x64-windows-static
+          C:/Tools/vcpkg/vcpkg integrate install
+
+      - name: 构建 sdk.dll
+        run: |
+          msbuild WeChatFerry/WeChatFerry.sln `
+            /p:Configuration=Release `
+            /p:Platform="x64" `
+            /p:VcpkgTriplet="x64-windows-static" `
+            /p:VcpkgEnableManifest=true `
+            /target:WeChatFerry:sdk `
+            /verbosity:minimal
+        shell: pwsh
+
+      - name: 打包 sdk.dll
+        run: |
+          New-Item -ItemType Directory -Force -Path "WeChatFerry/tmp"
+          Compress-Archive -Path "WeChatFerry/Out/sdk.dll" -DestinationPath "WeChatFerry/tmp/sdk-v${{ env.version }}.zip"
+        shell: pwsh
+
+      - name: 发布 sdk.dll 到 Github Releases
+        uses: ncipollo/release-action@main
+        with:
+          name: sdk-v${{ env.version }}
+          tag: sdk-v${{ env.version }}
+          token: ${{ secrets.REPO_TOKEN }}
+          allowUpdates: true
+          artifacts: "WeChatFerry/tmp/sdk-v${{ env.version }}.zip"
+          body: |
+            sdk.dll 版本：`v${{ env.version }}`
