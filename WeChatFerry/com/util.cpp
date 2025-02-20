@@ -1,5 +1,6 @@
 ﻿#include "Shlwapi.h"
 #include "framework.h"
+#include <Psapi.h>
 #include <codecvt>
 #include <locale>
 #include <string.h>
@@ -13,6 +14,7 @@
 
 #pragma comment(lib, "shlwapi")
 #pragma comment(lib, "Version.lib")
+#pragma comment(lib, "Psapi.lib")
 
 using namespace std;
 
