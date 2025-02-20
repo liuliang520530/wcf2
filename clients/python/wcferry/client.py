@@ -62,7 +62,7 @@ class Wcf():
         contacts (list): 联系人缓存，调用 `get_contacts` 后更新
     """
 
-    def __init__(self, host: str = None, port: int = 10086, debug: bool = True, block: bool = True) -> None:
+    def __init__(self, host: str = None, pid: int = 0, port: int = 10086, debug: bool = True, block: bool = True) -> None:
         self._local_mode = False
         self._is_running = False
         self._is_receiving_msg = False
@@ -73,12 +73,13 @@ class Wcf():
         self.LOG.info(f"wcferry version: {__version__}")
         self.port = port
         self.host = host
+        self.pid = pid
         self.sdk = None
         if host is None:
             self._local_mode = True
             self.host = "127.0.0.1"
-            self.sdk = ctypes.cdll.LoadLibrary(f"{self._wcf_root}/sdk.dll")
-            if self.sdk.WxInitSDK(debug, port) != 0:
+            self.sdk = ctypes.cdll.LoadLibrary(f"{self._wcf_root}/sdk/sdk.dll")
+            if self.sdk.WxInitSDKWithPid(pid, debug, port) != 0:
                 self.LOG.error("初始化失败！")
                 os._exit(-1)
 

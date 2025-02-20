@@ -4,23 +4,24 @@
 
 #include "spy_types.h"
 
-#define WECHAREXE       L"WeChat.exe"
-#define WECHATWINDLL    L"WeChatWin.dll"
-#define WCFSDKDLL       L"sdk.dll"
-#define WCFSPYDLL       L"spy.dll"
+#define WECHAREXE L"WeChat.exe"
+#define WECHATWINDLL L"WeChatWin.dll"
+#define WCFSDKDLL L"sdk.dll"
+#define WCFSPYDLL L"spy.dll"
 #define WCFSPYDLL_DEBUG L"spy_debug.dll"
 
-#define GET_UINT64(addr)         ((UINT64) * (UINT64 *)(addr))
-#define GET_DWORD(addr)          ((DWORD) * (UINT64 *)(addr))
-#define GET_QWORD(addr)          ((UINT64) * (UINT64 *)(addr))
-#define GET_STRING(addr)         ((CHAR *)(*(UINT64 *)(addr)))
-#define GET_WSTRING(addr)        ((WCHAR *)(*(UINT64 *)(addr)))
-#define GET_STRING_FROM_P(addr)  ((CHAR *)(addr))
+#define GET_UINT64(addr) ((UINT64) * (UINT64 *)(addr))
+#define GET_DWORD(addr) ((DWORD) * (UINT64 *)(addr))
+#define GET_QWORD(addr) ((UINT64) * (UINT64 *)(addr))
+#define GET_STRING(addr) ((CHAR *)(*(UINT64 *)(addr)))
+#define GET_WSTRING(addr) ((WCHAR *)(*(UINT64 *)(addr)))
+#define GET_STRING_FROM_P(addr) ((CHAR *)(addr))
 #define GET_WSTRING_FROM_P(addr) ((WCHAR *)(addr))
 
-typedef struct PortPath {
-    int port;
-    char path[MAX_PATH];
+typedef struct PortPath
+{
+  int port;
+  char path[MAX_PATH];
 } PortPath_t;
 
 DWORD GetWeChatPid();

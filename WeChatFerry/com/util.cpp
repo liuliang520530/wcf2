@@ -84,9 +84,49 @@ __exit:
   return ERROR_SUCCESS;
 }
 
+// 重载函数：通过 PID 获取可执行文件路径
+static int GetWeChatPath(DWORD pid, wchar_t *path)
+{
+  int ret = -1;
+  HANDLE hProcess = NULL;
+
+  // 打开进程
+  hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+  if (hProcess == NULL)
+  {
+    ret = GetLastError();
+    return ret;
+  }
+
+  // 获取可执行文件路径
+  DWORD cbData = MAX_PATH;
+  if (GetModuleFileNameExW(hProcess, NULL, path, cbData) == 0)
+  {
+    ret = GetLastError();
+    goto __exit;
+  }
+
+  // 检查路径是否有效
+  if (path[0] == L'\0')
+  {
+    ret = ERROR_PATH_NOT_FOUND; // 路径为空
+    goto __exit;
+  }
+
+  ret = ERROR_SUCCESS; // 成功
+
+__exit:
+  if (hProcess)
+  {
+    CloseHandle(hProcess);
+  }
+  return ret;
+}
+
 static int GetWeChatWinDLLPath(wchar_t *path)
 {
-  int ret = GetWeChatPath(path);
+  DWORD pid = GetWeChatPid();
+  int ret = GetWeChatPath(pid, path);
   if (ret != ERROR_SUCCESS)
   {
     return ret;
@@ -177,22 +217,53 @@ int GetWeChatVersion(wchar_t *version)
   return ret;
 }
 
+// 函数目标：查找微信进程的 PID，单次遍历，优先返回当前进程的 PID
 DWORD GetWeChatPid()
 {
-  DWORD pid = 0;
+  // 初始化找到的微信 PID 为 0
+  DWORD foundPid = 0;
+
+  // 获取当前进程的 PID
+  DWORD currentPid = GetCurrentProcessId();
+
+  // 创建进程快照
   HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (hSnapshot == INVALID_HANDLE_VALUE)
+    return 0;
+
+  // 定义 PROCESSENTRY32 结构并初始化大小
   PROCESSENTRY32 pe32 = {sizeof(PROCESSENTRY32)};
-  while (Process32Next(hSnapshot, &pe32))
+
+  // 获取第一个进程信息，若失败则清理并返回
+  if (!Process32First(hSnapshot, &pe32))
+  {
+    CloseHandle(hSnapshot);
+    return 0;
+  }
+
+  // 单次遍历：优先检查当前进程，若不是则记录其他微信 PID
+  do
   {
     wstring strProcess = pe32.szExeFile;
     if (strProcess == WECHAREXE)
     {
-      pid = pe32.th32ProcessID;
-      break;
+      if (pe32.th32ProcessID == currentPid)
+      {
+        CloseHandle(hSnapshot); // 找到当前进程，关闭句柄
+        return currentPid;      // 优先返回当前进程 PID
+      }
+      else if (foundPid == 0) // 只保存第一个非当前进程的微信 PID
+      {
+        foundPid = pe32.th32ProcessID;
+      }
     }
-  }
+  } while (Process32Next(hSnapshot, &pe32));
+
+  // 关闭快照句柄
   CloseHandle(hSnapshot);
-  return pid;
+
+  // 返回找到的其他微信 PID，或 0（未找到）
+  return foundPid;
 }
 
 enum class WindowsArchiture
