@@ -4,22 +4,24 @@ package app
 #cgo LDFLAGS: -L../ -lsdk
 #include <stdlib.h>
 #include <stdbool.h>
+#include <windows.h>
 
-extern int WxInitSDK(bool, int);
+extern int WxInitSDKWithPid(DWORD, bool, int);
 extern int WxDestroySDK();
 */
 import "C"
 import (
 	"bytes"
 	"fmt"
-	"github.com/go-resty/resty/v2"
-	"github.com/google/uuid"
 	"go_wechatFerry/wcf"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/go-resty/resty/v2"
+	"github.com/google/uuid"
 )
 
 var WxClient *wcf.Client
@@ -40,10 +42,10 @@ type Message struct {
 	Xml       string `json:"xml,omitempty"`
 }
 
-// WechatFerryInit 调用sdk.dll中的WxInitSdk 进行启动微信并注入
+// WechatFerryInit 调用sdk.dll中的WxInitSDKWithPid 进行启动微信并注入
 func WechatFerryInit() {
 	// 调试模式  端口
-	initSuccess := C.WxInitSDK(C.bool(false), C.int(10086))
+	initSuccess := C.WxInitSDKWithPid(16656, C.bool(false), C.int(10086))
 	if initSuccess == 0 {
 		fmt.Println("SDK 初始化成功")
 	} else {
