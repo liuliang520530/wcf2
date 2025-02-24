@@ -63,6 +63,12 @@ static std::vector<DWORD> GetWeChatPids()
   {
     MessageBox(NULL, L"No WeChat.exe found", L"Info", 0);
   }
+  else
+  {
+    wchar_t msg[128];
+    wsprintfW(msg, L"Found %zu WeChat PIDs", pids.size());
+    MessageBox(NULL, msg, L"Info", 0);
+  }
   return pids;
 }
 
@@ -90,7 +96,7 @@ int CloseWeChatMutex(DWORD targetPid)
   {
     pids.push_back(targetPid);
     wchar_t msg[64];
-    wsprintfW(msg, L"Target PID: %lu", targetPid);
+    wsprintfW(msg, L"Targeting PID: %lu", targetPid);
     MessageBox(NULL, msg, L"Info", 0);
   }
   else
@@ -117,7 +123,9 @@ int CloseWeChatMutex(DWORD targetPid)
 
   if (status != STATUS_INFO_LENGTH_MISMATCH || returnLength * 2 > 67108864)
   {
-    MessageBox(NULL, L"ZwQuerySystemInformation failed (initial)", L"Error", 0);
+    wchar_t msg[64];
+    wsprintfW(msg, L"Initial ZwQuery failed, status: %ld", status);
+    MessageBox(NULL, msg, L"Error", 0);
     return 0;
   }
 
@@ -133,7 +141,9 @@ int CloseWeChatMutex(DWORD targetPid)
   if (status < 0)
   {
     VirtualFree(buffer, 0, MEM_RELEASE);
-    MessageBox(NULL, L"ZwQuerySystemInformation failed (second)", L"Error", 0);
+    wchar_t msg[64];
+    wsprintfW(msg, L"Second ZwQuery failed, status: %ld", status);
+    MessageBox(NULL, msg, L"Error", 0);
     return 0;
   }
 
@@ -145,6 +155,9 @@ int CloseWeChatMutex(DWORD targetPid)
     MessageBox(NULL, L"Invalid handle count", L"Error", 0);
     return 0;
   }
+  wchar_t countMsg[64];
+  wsprintfW(countMsg, L"Handle count: %lu", handleCount);
+  MessageBox(NULL, countMsg, L"Info", 0);
 
   SYSTEM_HANDLE_INFORMATION *handleInfo = (SYSTEM_HANDLE_INFORMATION *)((BYTE *)buffer + sizeof(ULONG));
 
@@ -164,59 +177,70 @@ int CloseWeChatMutex(DWORD targetPid)
         }
 
         HANDLE hHandle = NULL;
-        if (DuplicateHandle(hProcess, (HANDLE)handleInfo[i].Handle,
-                            GetCurrentProcess(), &hHandle, 0, FALSE, DUPLICATE_SAME_ACCESS))
+        if (!DuplicateHandle(hProcess, (HANDLE)handleInfo[i].Handle,
+                             GetCurrentProcess(), &hHandle, 0, FALSE, DUPLICATE_SAME_ACCESS))
         {
-          BYTE typeInfo[128] = {0};
-          if (NtQueryObject(hHandle, 1, typeInfo, sizeof(typeInfo), NULL) >= 0)
+          wchar_t msg[64];
+          wsprintfW(msg, L"DuplicateHandle failed for PID: %lu", pid);
+          MessageBox(NULL, msg, L"Error", 0);
+          CloseHandle(hProcess);
+          continue;
+        }
+
+        BYTE typeInfo[128] = {0};
+        status = NtQueryObject(hHandle, 1, typeInfo, sizeof(typeInfo), NULL);
+        if (status < 0)
+        {
+          wchar_t msg[64];
+          wsprintfW(msg, L"NtQueryObject (type) failed, status: %ld", status);
+          MessageBox(NULL, msg, L"Error", 0);
+          CloseHandle(hHandle);
+          CloseHandle(hProcess);
+          continue;
+        }
+
+        POBJECT_TYPE_INFORMATION objType = (POBJECT_TYPE_INFORMATION)typeInfo;
+        if (_wcsicmp(objType->Name.Buffer, L"Mutant") == 0)
+        {
+          BYTE nameInfo[512] = {0};
+          status = NtQueryObject(hHandle, 0, nameInfo, sizeof(nameInfo), NULL);
+          if (status < 0)
           {
-            POBJECT_TYPE_INFORMATION objType = (POBJECT_TYPE_INFORMATION)typeInfo;
-            if (_wcsicmp(objType->Name.Buffer, L"Mutant") == 0)
+            wchar_t msg[64];
+            wsprintfW(msg, L"NtQueryObject (name) failed, status: %ld", status);
+            MessageBox(NULL, msg, L"Error", 0);
+            CloseHandle(hHandle);
+            CloseHandle(hProcess);
+            continue;
+          }
+
+          POBJECT_NAME_INFORMATION objName = (POBJECT_NAME_INFORMATION)nameInfo;
+          if (objName->Name.Buffer)
+          {
+            wchar_t msg[512];
+            wsprintfW(msg, L"Found mutex: %s", objName->Name.Buffer);
+            MessageBox(NULL, msg, L"Debug", 0);
+          }
+
+          if (wcsstr(objName->Name.Buffer, L"_WeChat_App_Instance_Identity_Mutex_Name"))
+          {
+            CloseHandle(hHandle);
+            if (DuplicateHandle(hProcess, (HANDLE)handleInfo[i].Handle,
+                                GetCurrentProcess(), &hHandle, 0, FALSE, DUPLICATE_CLOSE_SOURCE))
             {
-              BYTE nameInfo[512] = {0};
-              if (NtQueryObject(hHandle, 0, nameInfo, sizeof(nameInfo), NULL) >= 0)
-              {
-                POBJECT_NAME_INFORMATION objName = (POBJECT_NAME_INFORMATION)nameInfo;
-                if (objName->Name.Buffer)
-                {
-                  wchar_t msg[512];
-                  wsprintfW(msg, L"Mutex name: %s", objName->Name.Buffer);
-                  MessageBox(NULL, msg, L"Debug", 0);
-                }
-                if (wcsstr(objName->Name.Buffer, L"_WeChat_App_Instance_Identity_Mutex_Name"))
-                {
-                  CloseHandle(hHandle);
-                  if (DuplicateHandle(hProcess, (HANDLE)handleInfo[i].Handle,
-                                      GetCurrentProcess(), &hHandle, 0, FALSE, DUPLICATE_CLOSE_SOURCE))
-                  {
-                    CloseHandle(hHandle);
-                    CloseHandle(hProcess);
-                    VirtualFree(buffer, 0, MEM_RELEASE);
-                    MessageBox(NULL, L"Mutex closed successfully", L"Success", 0);
-                    return 1;
-                  }
-                  else
-                  {
-                    MessageBox(NULL, L"Failed to close mutex", L"Error", 0);
-                  }
-                }
-              }
-              else
-              {
-                MessageBox(NULL, L"NtQueryObject failed (name)", L"Error", 0);
-              }
+              CloseHandle(hHandle);
+              CloseHandle(hProcess);
+              VirtualFree(buffer, 0, MEM_RELEASE);
+              MessageBox(NULL, L"Mutex closed successfully", L"Success", 0);
+              return 1;
+            }
+            else
+            {
+              MessageBox(NULL, L"Failed to close mutex", L"Error", 0);
             }
           }
-          else
-          {
-            MessageBox(NULL, L"NtQueryObject failed (type)", L"Error", 0);
-          }
-          CloseHandle(hHandle);
         }
-        else
-        {
-          MessageBox(NULL, L"DuplicateHandle failed (first)", L"Error", 0);
-        }
+        CloseHandle(hHandle);
         CloseHandle(hProcess);
       }
     }
