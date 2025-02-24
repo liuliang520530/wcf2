@@ -125,7 +125,24 @@ int CloseWeChatMutex(DWORD targetPid)
     return 0;
   }
 
-  ULONG handleCount = *(ULONG *)buffer;
+  // 首先确保buffer大小足够
+  if (bufferSize < sizeof(ULONG))
+  {
+    MessageBox(NULL, L"Buffer too small for handle count", L"Buffer too small for handle count", 0);
+    return 0;
+  }
+
+  // 使用memcpy来安全地复制数据
+  ULONG handleCount = 0;
+  memcpy(&handleCount, buffer, sizeof(ULONG));
+
+  // 验证句柄数量的合理性
+  if (handleCount == 0 || handleCount > (bufferSize - sizeof(ULONG)) / sizeof(SYSTEM_HANDLE_INFORMATION))
+  {
+    MessageBox(NULL, L"Invalid handle count", L"Invalid handle count", 0);
+    return 0;
+  }
+
   SYSTEM_HANDLE_INFORMATION *handleInfo = (SYSTEM_HANDLE_INFORMATION *)((BYTE *)buffer + sizeof(ULONG));
 
   // 遍历句柄，关闭互斥锁
