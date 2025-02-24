@@ -66,8 +66,13 @@ static std::vector<DWORD> GetWeChatPids()
   else
   {
     wchar_t msg[128];
-    wsprintfW(msg, L"Found %zu WeChat PIDs", pids.size());
+    swprintf_s(msg, 128, L"Found %zu WeChat PIDs", pids.size());
     MessageBox(NULL, msg, L"Info", 0);
+    for (DWORD pid : pids)
+    {
+      swprintf_s(msg, 128, L"WeChat PID: %lu", pid);
+      MessageBox(NULL, msg, L"Debug", 0);
+    }
   }
   return pids;
 }
@@ -96,7 +101,7 @@ int CloseWeChatMutex(DWORD targetPid)
   {
     pids.push_back(targetPid);
     wchar_t msg[64];
-    wsprintfW(msg, L"Targeting PID: %lu", targetPid);
+    swprintf_s(msg, 64, L"Targeting PID: %lu", targetPid);
     MessageBox(NULL, msg, L"Info", 0);
   }
   else
@@ -124,7 +129,7 @@ int CloseWeChatMutex(DWORD targetPid)
   if (status != STATUS_INFO_LENGTH_MISMATCH || returnLength * 2 > 67108864)
   {
     wchar_t msg[64];
-    wsprintfW(msg, L"Initial ZwQuery failed, status: %ld", status);
+    swprintf_s(msg, 64, L"Initial ZwQuery failed, status: %ld", status);
     MessageBox(NULL, msg, L"Error", 0);
     return 0;
   }
@@ -142,7 +147,7 @@ int CloseWeChatMutex(DWORD targetPid)
   {
     VirtualFree(buffer, 0, MEM_RELEASE);
     wchar_t msg[64];
-    wsprintfW(msg, L"Second ZwQuery failed, status: %ld", status);
+    swprintf_s(msg, 64, L"Second ZwQuery failed, status: %ld", status);
     MessageBox(NULL, msg, L"Error", 0);
     return 0;
   }
@@ -156,7 +161,7 @@ int CloseWeChatMutex(DWORD targetPid)
     return 0;
   }
   wchar_t countMsg[64];
-  wsprintfW(countMsg, L"Handle count: %lu", handleCount);
+  swprintf_s(countMsg, 64, L"Handle count: %lu", handleCount);
   MessageBox(NULL, countMsg, L"Info", 0);
 
   SYSTEM_HANDLE_INFORMATION *handleInfo = (SYSTEM_HANDLE_INFORMATION *)((BYTE *)buffer + sizeof(ULONG));
@@ -167,11 +172,15 @@ int CloseWeChatMutex(DWORD targetPid)
     {
       if (handleInfo[i].ProcessId == pid)
       {
+        wchar_t pidMsg[64];
+        swprintf_s(pidMsg, 64, L"Checking PID: %lu, Handle: %u", pid, handleInfo[i].Handle);
+        MessageBox(NULL, pidMsg, L"Debug", 0);
+
         HANDLE hProcess = OpenProcess(PROCESS_DUP_HANDLE, FALSE, pid);
         if (!hProcess)
         {
           wchar_t msg[64];
-          wsprintfW(msg, L"OpenProcess failed for PID: %lu", pid);
+          swprintf_s(msg, 64, L"OpenProcess failed for PID: %lu, Error: %lu", pid, GetLastError());
           MessageBox(NULL, msg, L"Error", 0);
           continue;
         }
@@ -181,7 +190,7 @@ int CloseWeChatMutex(DWORD targetPid)
                              GetCurrentProcess(), &hHandle, 0, FALSE, DUPLICATE_SAME_ACCESS))
         {
           wchar_t msg[64];
-          wsprintfW(msg, L"DuplicateHandle failed for PID: %lu", pid);
+          swprintf_s(msg, 64, L"DuplicateHandle failed for PID: %lu, Error: %lu", pid, GetLastError());
           MessageBox(NULL, msg, L"Error", 0);
           CloseHandle(hProcess);
           continue;
@@ -192,7 +201,7 @@ int CloseWeChatMutex(DWORD targetPid)
         if (status < 0)
         {
           wchar_t msg[64];
-          wsprintfW(msg, L"NtQueryObject (type) failed, status: %ld", status);
+          swprintf_s(msg, 64, L"NtQueryObject (type) failed, status: %ld", status);
           MessageBox(NULL, msg, L"Error", 0);
           CloseHandle(hHandle);
           CloseHandle(hProcess);
@@ -200,6 +209,10 @@ int CloseWeChatMutex(DWORD targetPid)
         }
 
         POBJECT_TYPE_INFORMATION objType = (POBJECT_TYPE_INFORMATION)typeInfo;
+        wchar_t typeMsg[128];
+        swprintf_s(typeMsg, 128, L"Object type: %s", objType->Name.Buffer);
+        MessageBox(NULL, typeMsg, L"Debug", 0);
+
         if (_wcsicmp(objType->Name.Buffer, L"Mutant") == 0)
         {
           BYTE nameInfo[512] = {0};
@@ -207,7 +220,7 @@ int CloseWeChatMutex(DWORD targetPid)
           if (status < 0)
           {
             wchar_t msg[64];
-            wsprintfW(msg, L"NtQueryObject (name) failed, status: %ld", status);
+            swprintf_s(msg, 64, L"NtQueryObject (name) failed, status: %ld", status);
             MessageBox(NULL, msg, L"Error", 0);
             CloseHandle(hHandle);
             CloseHandle(hProcess);
@@ -218,7 +231,7 @@ int CloseWeChatMutex(DWORD targetPid)
           if (objName->Name.Buffer)
           {
             wchar_t msg[512];
-            wsprintfW(msg, L"Found mutex: %s", objName->Name.Buffer);
+            swprintf_s(msg, 512, L"Found mutex: %s", objName->Name.Buffer);
             MessageBox(NULL, msg, L"Debug", 0);
           }
 
