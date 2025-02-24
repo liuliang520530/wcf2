@@ -146,14 +146,12 @@ xcopy /y $(OutDir)$(TargetFileName) $(SolutionDir)..\clients\python\wcferry</Com
     <ClInclude Include="framework.h" />
     <ClInclude Include="injector.h" />
     <ClInclude Include="sdk.h" />
-    <ClInclude Include="WeChatMutex.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\com\util.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="injector.cpp" />
     <ClCompile Include="sdk.cpp" />
-    <ClCompile Include="WeChatMutex.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="sdk.def" />
