@@ -164,14 +164,24 @@ int CloseWeChatMutex(DWORD targetPid)
   swprintf_s(countMsg, 64, L"Handle count: %lu", handleCount);
   MessageBox(NULL, countMsg, L"Info", 0);
 
+  // 输出前几个句柄的 PID，验证数据
   SYSTEM_HANDLE_INFORMATION *handleInfo = (SYSTEM_HANDLE_INFORMATION *)((BYTE *)buffer + sizeof(ULONG));
+  for (ULONG i = 0; i < min(5, handleCount); i++)
+  {
+    wchar_t msg[64];
+    swprintf_s(msg, 64, L"Sample PID[%lu]: %lu", i, handleInfo[i].ProcessId);
+    MessageBox(NULL, msg, L"Debug", 0);
+  }
 
+  // 遍历句柄
+  bool foundPid = false;
   for (ULONG i = 0; i < handleCount; i++)
   {
     for (DWORD pid : pids)
     {
       if (handleInfo[i].ProcessId == pid)
       {
+        foundPid = true;
         wchar_t pidMsg[64];
         swprintf_s(pidMsg, 64, L"Checking PID: %lu, Handle: %u", pid, handleInfo[i].Handle);
         MessageBox(NULL, pidMsg, L"Debug", 0);
@@ -213,7 +223,6 @@ int CloseWeChatMutex(DWORD targetPid)
         swprintf_s(typeMsg, 128, L"Object type: %s", objType->Name.Buffer ? objType->Name.Buffer : L"Unknown");
         MessageBox(NULL, typeMsg, L"Debug", 0);
 
-        // 检查所有类型，不局限于 Mutant
         BYTE nameInfo[512] = {0};
         status = NtQueryObject(hHandle, 0, nameInfo, sizeof(nameInfo), NULL);
         if (status >= 0)
@@ -251,6 +260,10 @@ int CloseWeChatMutex(DWORD targetPid)
   }
 
   VirtualFree(buffer, 0, MEM_RELEASE);
+  if (!foundPid)
+  {
+    MessageBox(NULL, L"No handles found for WeChat PID", L"Error", 0);
+  }
   MessageBox(NULL, L"Mutex not found or failed to close", L"Error", 0);
   return 0;
 }
