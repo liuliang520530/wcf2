@@ -145,6 +145,12 @@ int CloseWeChatMutex(DWORD targetPid)
 
   SYSTEM_HANDLE_INFORMATION *handleInfo = (SYSTEM_HANDLE_INFORMATION *)((BYTE *)buffer + sizeof(ULONG));
 
+  if (handleCount == 0)
+  {
+    MessageBox(NULL, L"句柄数为零", L"错误", 0);
+    return 0;
+  }
+
   // 遍历句柄，关闭互斥锁
   for (ULONG i = 0; i < handleCount; i++)
   {
