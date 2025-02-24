@@ -8,7 +8,7 @@ typedef LONG NTSTATUS;
 typedef NTSTATUS(WINAPI *PFN_ZWQUERYSYSTEMINFORMATION)(ULONG, PVOID, ULONG, PULONG);
 typedef NTSTATUS(WINAPI *PFN_NTQUERYOBJECT)(HANDLE, ULONG, PVOID, ULONG, PULONG);
 
-// 64 位环境下，20 字节结构
+// 64 位结构（20 字节）
 #pragma pack(push, 1)
 typedef struct _SYSTEM_HANDLE_TABLE_ENTRY_INFO
 {
@@ -46,6 +46,38 @@ typedef struct _OBJECT_NAME_INFORMATION
 {
   UNICODE_STRING Name;
 } OBJECT_NAME_INFORMATION, *POBJECT_NAME_INFORMATION;
+
+// 启用 SeDebugPrivilege
+static BOOL EnableDebugPrivilege()
+{
+  HANDLE hToken;
+  if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken))
+  {
+    MessageBox(NULL, L"OpenProcessToken failed", L"Error", 0);
+    return FALSE;
+  }
+
+  TOKEN_PRIVILEGES tp;
+  tp.PrivilegeCount = 1;
+  tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+  if (!LookupPrivilegeValue(NULL, SE_DEBUG_NAME, &tp.Privileges[0].Luid))
+  {
+    MessageBox(NULL, L"LookupPrivilegeValue failed", L"Error", 0);
+    CloseHandle(hToken);
+    return FALSE;
+  }
+
+  if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), NULL, NULL))
+  {
+    MessageBox(NULL, L"AdjustTokenPrivileges failed", L"Error", 0);
+    CloseHandle(hToken);
+    return FALSE;
+  }
+
+  CloseHandle(hToken);
+  MessageBox(NULL, L"SeDebugPrivilege enabled", L"Info", 0);
+  return TRUE;
+}
 
 static std::vector<DWORD> GetWeChatPids()
 {
@@ -89,6 +121,12 @@ static std::vector<DWORD> GetWeChatPids()
 
 int CloseWeChatMutex(DWORD targetPid)
 {
+  if (!EnableDebugPrivilege())
+  {
+    MessageBox(NULL, L"Failed to enable SeDebugPrivilege", L"Error", 0);
+    return 0;
+  }
+
   HMODULE hNtDll = GetModuleHandleW(L"ntdll.dll");
   if (!hNtDll)
   {
@@ -174,7 +212,6 @@ int CloseWeChatMutex(DWORD targetPid)
   swprintf_s(countMsg, 64, L"Handle count: %lu", handleCount);
   MessageBox(NULL, countMsg, L"Info", 0);
 
-  // 64 位下每条记录 20 字节
   BYTE *pBuffer = (BYTE *)buffer + sizeof(ULONG);
   SYSTEM_HANDLE_TABLE_ENTRY_INFO handleTemp;
   for (ULONG i = 0; i < min(5, handleCount); i++)
@@ -189,6 +226,10 @@ int CloseWeChatMutex(DWORD targetPid)
   for (ULONG i = 0; i < handleCount; i++)
   {
     memcpy(&handleTemp, pBuffer + i * sizeof(SYSTEM_HANDLE_TABLE_ENTRY_INFO), sizeof(SYSTEM_HANDLE_TABLE_ENTRY_INFO));
+    wchar_t pidCheck[64];
+    swprintf_s(pidCheck, 64, L"PID at %lu: %u", i, handleTemp.UniqueProcessId);
+    if (i < 10)
+      MessageBox(NULL, pidCheck, L"Debug All", 0); // 检查前 10 个 PID
     for (DWORD pid : pids)
     {
       if (handleTemp.UniqueProcessId == pid)
