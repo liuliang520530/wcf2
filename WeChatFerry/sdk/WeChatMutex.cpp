@@ -37,13 +37,15 @@ typedef struct _OBJECT_NAME_INFORMATION
   UNICODE_STRING Name;
 } OBJECT_NAME_INFORMATION, *POBJECT_NAME_INFORMATION;
 
-// 获取所有 WeChat.exe 的 PID
 static std::vector<DWORD> GetWeChatPids()
 {
   std::vector<DWORD> pids;
   HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
   if (snapshot == INVALID_HANDLE_VALUE)
+  {
+    MessageBox(NULL, L"CreateToolhelp32Snapshot failed", L"Error", 0);
     return pids;
+  }
 
   PROCESSENTRY32W pe32 = {sizeof(pe32)};
   if (Process32FirstW(snapshot, &pe32))
@@ -57,45 +59,55 @@ static std::vector<DWORD> GetWeChatPids()
     } while (Process32NextW(snapshot, &pe32));
   }
   CloseHandle(snapshot);
+  if (pids.empty())
+  {
+    MessageBox(NULL, L"No WeChat.exe found", L"Info", 0);
+  }
   return pids;
 }
 
-// 关闭微信互斥锁，支持指定 PID 或遍历
 int CloseWeChatMutex(DWORD targetPid)
 {
   HMODULE hNtDll = GetModuleHandleW(L"ntdll.dll");
   if (!hNtDll)
+  {
+    MessageBox(NULL, L"GetModuleHandle failed", L"Error", 0);
     return 0;
+  }
 
   PFN_ZWQUERYSYSTEMINFORMATION ZwQuerySystemInformation =
       (PFN_ZWQUERYSYSTEMINFORMATION)GetProcAddress(hNtDll, "ZwQuerySystemInformation");
   PFN_NTQUERYOBJECT NtQueryObject =
       (PFN_NTQUERYOBJECT)GetProcAddress(hNtDll, "NtQueryObject");
   if (!ZwQuerySystemInformation || !NtQueryObject)
+  {
+    MessageBox(NULL, L"GetProcAddress failed", L"Error", 0);
     return 0;
+  }
 
-  // 获取目标 PID 列表
   std::vector<DWORD> pids;
   if (targetPid != 0)
   {
-    pids.push_back(targetPid); // 指定 PID
+    pids.push_back(targetPid);
+    wchar_t msg[64];
+    wsprintfW(msg, L"Target PID: %lu", targetPid);
+    MessageBox(NULL, msg, L"Info", 0);
   }
   else
   {
-    pids = GetWeChatPids(); // 遍历 WeChat.exe
+    pids = GetWeChatPids();
     if (pids.empty())
     {
-      MessageBox(NULL, L"没有找到微信进程", L"没有找到微信进程", 0);
+      MessageBox(NULL, L"No WeChat processes found", L"Error", 0);
       return 0;
     }
   }
 
-  // 查询系统句柄
   ULONG bufferSize = 4096;
   PVOID buffer = VirtualAlloc(NULL, bufferSize, MEM_COMMIT, PAGE_READWRITE);
   if (!buffer)
   {
-    MessageBox(NULL, L"buffer err", L"buffer err", 0);
+    MessageBox(NULL, L"VirtualAlloc failed (initial)", L"Error", 0);
     return 0;
   }
 
@@ -105,7 +117,7 @@ int CloseWeChatMutex(DWORD targetPid)
 
   if (status != STATUS_INFO_LENGTH_MISMATCH || returnLength * 2 > 67108864)
   {
-    MessageBox(NULL, L"status err ", L"status err ", 0);
+    MessageBox(NULL, L"ZwQuerySystemInformation failed (initial)", L"Error", 0);
     return 0;
   }
 
@@ -113,7 +125,7 @@ int CloseWeChatMutex(DWORD targetPid)
   buffer = VirtualAlloc(NULL, bufferSize, MEM_COMMIT, PAGE_READWRITE);
   if (!buffer)
   {
-    MessageBox(NULL, L"buffer err2", L"buffer err2", 0);
+    MessageBox(NULL, L"VirtualAlloc failed (second)", L"Error", 0);
     return 0;
   }
 
@@ -121,37 +133,21 @@ int CloseWeChatMutex(DWORD targetPid)
   if (status < 0)
   {
     VirtualFree(buffer, 0, MEM_RELEASE);
-    MessageBox(NULL, L"status err3", L"status err3", 0);
+    MessageBox(NULL, L"ZwQuerySystemInformation failed (second)", L"Error", 0);
     return 0;
   }
 
-  // 首先确保buffer大小足够
-  if (bufferSize < sizeof(ULONG))
-  {
-    MessageBox(NULL, L"Buffer too small for handle count", L"Buffer too small for handle count", 0);
-    return 0;
-  }
-
-  // 使用memcpy来安全地复制数据
   ULONG handleCount = 0;
   memcpy(&handleCount, buffer, sizeof(ULONG));
-
-  // 验证句柄数量的合理性
   if (handleCount == 0 || handleCount > (bufferSize - sizeof(ULONG)) / sizeof(SYSTEM_HANDLE_INFORMATION))
   {
-    MessageBox(NULL, L"Invalid handle count", L"Invalid handle count", 0);
+    VirtualFree(buffer, 0, MEM_RELEASE);
+    MessageBox(NULL, L"Invalid handle count", L"Error", 0);
     return 0;
   }
 
   SYSTEM_HANDLE_INFORMATION *handleInfo = (SYSTEM_HANDLE_INFORMATION *)((BYTE *)buffer + sizeof(ULONG));
 
-  if (handleCount == 0)
-  {
-    MessageBox(NULL, L"句柄数为零", L"错误", 0);
-    return 0;
-  }
-
-  // 遍历句柄，关闭互斥锁
   for (ULONG i = 0; i < handleCount; i++)
   {
     for (DWORD pid : pids)
@@ -160,7 +156,12 @@ int CloseWeChatMutex(DWORD targetPid)
       {
         HANDLE hProcess = OpenProcess(PROCESS_DUP_HANDLE, FALSE, pid);
         if (!hProcess)
+        {
+          wchar_t msg[64];
+          wsprintfW(msg, L"OpenProcess failed for PID: %lu", pid);
+          MessageBox(NULL, msg, L"Error", 0);
           continue;
+        }
 
         HANDLE hHandle = NULL;
         if (DuplicateHandle(hProcess, (HANDLE)handleInfo[i].Handle,
@@ -176,6 +177,12 @@ int CloseWeChatMutex(DWORD targetPid)
               if (NtQueryObject(hHandle, 0, nameInfo, sizeof(nameInfo), NULL) >= 0)
               {
                 POBJECT_NAME_INFORMATION objName = (POBJECT_NAME_INFORMATION)nameInfo;
+                if (objName->Name.Buffer)
+                {
+                  wchar_t msg[512];
+                  wsprintfW(msg, L"Mutex name: %s", objName->Name.Buffer);
+                  MessageBox(NULL, msg, L"Debug", 0);
+                }
                 if (wcsstr(objName->Name.Buffer, L"_WeChat_App_Instance_Identity_Mutex_Name"))
                 {
                   CloseHandle(hHandle);
@@ -185,14 +192,30 @@ int CloseWeChatMutex(DWORD targetPid)
                     CloseHandle(hHandle);
                     CloseHandle(hProcess);
                     VirtualFree(buffer, 0, MEM_RELEASE);
-                    MessageBox(NULL, L"成功关闭", L"成功关闭", 0);
-                    return 1; // 成功关闭
+                    MessageBox(NULL, L"Mutex closed successfully", L"Success", 0);
+                    return 1;
+                  }
+                  else
+                  {
+                    MessageBox(NULL, L"Failed to close mutex", L"Error", 0);
                   }
                 }
               }
+              else
+              {
+                MessageBox(NULL, L"NtQueryObject failed (name)", L"Error", 0);
+              }
             }
           }
+          else
+          {
+            MessageBox(NULL, L"NtQueryObject failed (type)", L"Error", 0);
+          }
           CloseHandle(hHandle);
+        }
+        else
+        {
+          MessageBox(NULL, L"DuplicateHandle failed (first)", L"Error", 0);
         }
         CloseHandle(hProcess);
       }
@@ -200,6 +223,6 @@ int CloseWeChatMutex(DWORD targetPid)
   }
 
   VirtualFree(buffer, 0, MEM_RELEASE);
-  MessageBox(NULL, L"未找到或关闭失败", L"未找到或关闭失败", 0);
-  return 0; // 未找到或关闭失败
+  MessageBox(NULL, L"Mutex not found or failed to close", L"Error", 0);
+  return 0;
 }
