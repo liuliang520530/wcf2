@@ -84,31 +84,44 @@ int CloseWeChatMutex(DWORD targetPid)
   {
     pids = GetWeChatPids(); // 遍历 WeChat.exe
     if (pids.empty())
+    {
+      MessageBox(NULL, L"没有找到微信进程", L"没有找到微信进程", 0);
       return 0;
+    }
   }
 
   // 查询系统句柄
   ULONG bufferSize = 4096;
   PVOID buffer = VirtualAlloc(NULL, bufferSize, MEM_COMMIT, PAGE_READWRITE);
   if (!buffer)
+  {
+    MessageBox(NULL, L"buffer err", L"buffer err", 0);
     return 0;
+  }
 
   ULONG returnLength = 0;
   NTSTATUS status = ZwQuerySystemInformation(16, buffer, bufferSize, &returnLength);
   VirtualFree(buffer, 0, MEM_RELEASE);
 
   if (status != STATUS_INFO_LENGTH_MISMATCH || returnLength * 2 > 67108864)
+  {
+    MessageBox(NULL, L"status err ", L"status err ", 0);
     return 0;
+  }
 
   bufferSize = returnLength * 2;
   buffer = VirtualAlloc(NULL, bufferSize, MEM_COMMIT, PAGE_READWRITE);
   if (!buffer)
+  {
+    MessageBox(NULL, L"buffer err2", L"buffer err2", 0);
     return 0;
+  }
 
   status = ZwQuerySystemInformation(16, buffer, bufferSize, NULL);
   if (status < 0)
   {
     VirtualFree(buffer, 0, MEM_RELEASE);
+    MessageBox(NULL, L"status err3", L"status err3", 0);
     return 0;
   }
 
@@ -149,6 +162,7 @@ int CloseWeChatMutex(DWORD targetPid)
                     CloseHandle(hHandle);
                     CloseHandle(hProcess);
                     VirtualFree(buffer, 0, MEM_RELEASE);
+                    MessageBox(NULL, L"成功关闭", L"成功关闭", 0);
                     return 1; // 成功关闭
                   }
                 }
@@ -163,5 +177,6 @@ int CloseWeChatMutex(DWORD targetPid)
   }
 
   VirtualFree(buffer, 0, MEM_RELEASE);
+  MessageBox(NULL, L"未找到或关闭失败", L"未找到或关闭失败", 0);
   return 0; // 未找到或关闭失败
 }
