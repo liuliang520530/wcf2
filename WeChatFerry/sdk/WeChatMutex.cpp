@@ -164,8 +164,18 @@ int CloseWeChatMutex(DWORD targetPid)
   swprintf_s(countMsg, 64, L"Handle count: %lu", handleCount);
   MessageBox(NULL, countMsg, L"Info", 0);
 
+  // 确保缓冲区足够大
+  if (bufferSize < sizeof(ULONG) + handleCount * sizeof(SYSTEM_HANDLE_INFORMATION))
+  {
+    MessageBox(NULL, L"Buffer too small for handle information", L"Error", 0);
+    return 0;
+  }
+
+  // 获取句柄信息数组
+  SYSTEM_HANDLE_INFORMATION *handleInfo = reinterpret_cast<SYSTEM_HANDLE_INFORMATION *>(
+      static_cast<BYTE *>(buffer) + sizeof(ULONG));
+
   // 输出前几个句柄的 PID，验证数据
-  SYSTEM_HANDLE_INFORMATION *handleInfo = (SYSTEM_HANDLE_INFORMATION *)((BYTE *)buffer + sizeof(ULONG));
   for (ULONG i = 0; i < min(5, handleCount); i++)
   {
     wchar_t msg[64];
