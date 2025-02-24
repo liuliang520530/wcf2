@@ -11,14 +11,16 @@ func InitRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	// API路由分组
-	apiGroup := r.Group("/api")
+	PublicGroup := r.Group("")
+	{
+		// 健康检查
+		PublicGroup.GET("/health", func(c *gin.Context) {
+			c.JSON(200, "ok")
+		})
+	}
 
-	// 注册各模块路由
-	router.InitMessageRouter(apiGroup) // 消息相关路由
-	router.InitUserRouter(apiGroup)    // 用户相关路由
-	router.InitRoomRouter(apiGroup)    // 群组相关路由
-	router.InitFileRouter(apiGroup)    // 文件相关路由
-	router.InitDBRouter(apiGroup)      // 数据库相关路由
+	// 注册路由组
+	router.RouterGroupApp.Init(r)
 
 	return r
 }

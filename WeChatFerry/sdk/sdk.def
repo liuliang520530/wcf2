@@ -3,3 +3,4 @@ EXPORTS
     WxInitSDKWithPid
     WxInitSDKWithPath
     WxDestroySDK
+    CloseWeChatMutex
