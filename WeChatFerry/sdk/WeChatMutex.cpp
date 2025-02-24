@@ -8,15 +8,25 @@ typedef LONG NTSTATUS;
 typedef NTSTATUS(WINAPI *PFN_ZWQUERYSYSTEMINFORMATION)(ULONG, PVOID, ULONG, PULONG);
 typedef NTSTATUS(WINAPI *PFN_NTQUERYOBJECT)(HANDLE, ULONG, PVOID, ULONG, PULONG);
 
-typedef struct _SYSTEM_HANDLE_INFORMATION
+// 64 位环境下，20 字节结构
+#pragma pack(push, 1)
+typedef struct _SYSTEM_HANDLE_TABLE_ENTRY_INFO
 {
-  ULONG ProcessId;
-  UCHAR ObjectTypeNumber;
-  UCHAR Flags;
-  USHORT Handle;
-  PVOID Object;
-  ACCESS_MASK GrantedAccess;
-} SYSTEM_HANDLE_INFORMATION, *PSYSTEM_HANDLE_INFORMATION;
+  USHORT UniqueProcessId;       // 2 bytes
+  USHORT CreatorBackTraceIndex; // 2 bytes
+  UCHAR ObjectTypeIndex;        // 1 byte
+  UCHAR HandleAttributes;       // 1 byte
+  USHORT HandleValue;           // 2 bytes
+  PVOID Object;                 // 8 bytes (64-bit)
+  ULONG GrantedAccess;          // 4 bytes
+} SYSTEM_HANDLE_TABLE_ENTRY_INFO, *PSYSTEM_HANDLE_TABLE_ENTRY_INFO;
+
+typedef struct _SYSTEM_HANDLE_INFORMATION1
+{
+  ULONG NumberOfHandles;                     // 4 bytes
+  SYSTEM_HANDLE_TABLE_ENTRY_INFO Handles[1]; // 变长数组
+} SYSTEM_HANDLE_INFORMATION1, *PSYSTEM_HANDLE_INFORMATION1;
+#pragma pack(pop)
 
 typedef struct _UNICODE_STRING
 {
@@ -152,9 +162,9 @@ int CloseWeChatMutex(DWORD targetPid)
     return 0;
   }
 
-  ULONG handleCount = 0;
-  memcpy(&handleCount, buffer, sizeof(ULONG));
-  if (handleCount == 0 || handleCount > (bufferSize - sizeof(ULONG)) / sizeof(SYSTEM_HANDLE_INFORMATION))
+  PSYSTEM_HANDLE_INFORMATION1 handleInfo = (PSYSTEM_HANDLE_INFORMATION1)buffer;
+  ULONG handleCount = handleInfo->NumberOfHandles;
+  if (handleCount == 0 || handleCount > (bufferSize - sizeof(ULONG)) / sizeof(SYSTEM_HANDLE_TABLE_ENTRY_INFO))
   {
     VirtualFree(buffer, 0, MEM_RELEASE);
     MessageBox(NULL, L"Invalid handle count", L"Error", 0);
@@ -164,36 +174,28 @@ int CloseWeChatMutex(DWORD targetPid)
   swprintf_s(countMsg, 64, L"Handle count: %lu", handleCount);
   MessageBox(NULL, countMsg, L"Info", 0);
 
-  // 确保缓冲区足够大
-  if (bufferSize < sizeof(ULONG) + handleCount * sizeof(SYSTEM_HANDLE_INFORMATION))
-  {
-    MessageBox(NULL, L"Buffer too small for handle information", L"Error", 0);
-    return 0;
-  }
-
-  // 获取句柄信息数组
-  SYSTEM_HANDLE_INFORMATION *handleInfo = reinterpret_cast<SYSTEM_HANDLE_INFORMATION *>(
-      static_cast<BYTE *>(buffer) + sizeof(ULONG));
-
-  // 输出前几个句柄的 PID，验证数据
+  // 64 位下每条记录 20 字节
+  BYTE *pBuffer = (BYTE *)buffer + sizeof(ULONG);
+  SYSTEM_HANDLE_TABLE_ENTRY_INFO handleTemp;
   for (ULONG i = 0; i < min(5, handleCount); i++)
   {
+    memcpy(&handleTemp, pBuffer + i * sizeof(SYSTEM_HANDLE_TABLE_ENTRY_INFO), sizeof(SYSTEM_HANDLE_TABLE_ENTRY_INFO));
     wchar_t msg[64];
-    swprintf_s(msg, 64, L"Sample PID[%lu]: %lu", i, handleInfo[i].ProcessId);
+    swprintf_s(msg, 64, L"Sample PID[%lu]: %u", i, handleTemp.UniqueProcessId);
     MessageBox(NULL, msg, L"Debug", 0);
   }
 
-  // 遍历句柄
-  bool foundPid = false;
+  ULONG weChatHandleCount = 0;
   for (ULONG i = 0; i < handleCount; i++)
   {
+    memcpy(&handleTemp, pBuffer + i * sizeof(SYSTEM_HANDLE_TABLE_ENTRY_INFO), sizeof(SYSTEM_HANDLE_TABLE_ENTRY_INFO));
     for (DWORD pid : pids)
     {
-      if (handleInfo[i].ProcessId == pid)
+      if (handleTemp.UniqueProcessId == pid)
       {
-        foundPid = true;
+        weChatHandleCount++;
         wchar_t pidMsg[64];
-        swprintf_s(pidMsg, 64, L"Checking PID: %lu, Handle: %u", pid, handleInfo[i].Handle);
+        swprintf_s(pidMsg, 64, L"Checking PID: %u, Handle: %u", handleTemp.UniqueProcessId, handleTemp.HandleValue);
         MessageBox(NULL, pidMsg, L"Debug", 0);
 
         HANDLE hProcess = OpenProcess(PROCESS_DUP_HANDLE, FALSE, pid);
@@ -206,7 +208,7 @@ int CloseWeChatMutex(DWORD targetPid)
         }
 
         HANDLE hHandle = NULL;
-        if (!DuplicateHandle(hProcess, (HANDLE)handleInfo[i].Handle,
+        if (!DuplicateHandle(hProcess, (HANDLE)handleTemp.HandleValue,
                              GetCurrentProcess(), &hHandle, 0, FALSE, DUPLICATE_SAME_ACCESS))
         {
           wchar_t msg[64];
@@ -247,7 +249,7 @@ int CloseWeChatMutex(DWORD targetPid)
           if (wcsstr(objName->Name.Buffer, L"_WeChat_App_Instance_Identity_Mutex_Name"))
           {
             CloseHandle(hHandle);
-            if (DuplicateHandle(hProcess, (HANDLE)handleInfo[i].Handle,
+            if (DuplicateHandle(hProcess, (HANDLE)handleTemp.HandleValue,
                                 GetCurrentProcess(), &hHandle, 0, FALSE, DUPLICATE_CLOSE_SOURCE))
             {
               CloseHandle(hHandle);
@@ -270,9 +272,17 @@ int CloseWeChatMutex(DWORD targetPid)
   }
 
   VirtualFree(buffer, 0, MEM_RELEASE);
-  if (!foundPid)
+  if (weChatHandleCount == 0)
   {
-    MessageBox(NULL, L"No handles found for WeChat PID", L"Error", 0);
+    wchar_t msg[64];
+    swprintf_s(msg, 64, L"No handles found for WeChat PID: %lu", pids[0]);
+    MessageBox(NULL, msg, L"Error", 0);
+  }
+  else
+  {
+    wchar_t msg[64];
+    swprintf_s(msg, 64, L"Found %lu handles for WeChat PID", weChatHandleCount);
+    MessageBox(NULL, msg, L"Info", 0);
   }
   MessageBox(NULL, L"Mutex not found or failed to close", L"Error", 0);
   return 0;
