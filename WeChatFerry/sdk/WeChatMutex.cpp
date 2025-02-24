@@ -210,31 +210,21 @@ int CloseWeChatMutex(DWORD targetPid)
 
         POBJECT_TYPE_INFORMATION objType = (POBJECT_TYPE_INFORMATION)typeInfo;
         wchar_t typeMsg[128];
-        swprintf_s(typeMsg, 128, L"Object type: %s", objType->Name.Buffer);
+        swprintf_s(typeMsg, 128, L"Object type: %s", objType->Name.Buffer ? objType->Name.Buffer : L"Unknown");
         MessageBox(NULL, typeMsg, L"Debug", 0);
 
-        if (_wcsicmp(objType->Name.Buffer, L"Mutant") == 0)
+        // 检查所有类型，不局限于 Mutant
+        BYTE nameInfo[512] = {0};
+        status = NtQueryObject(hHandle, 0, nameInfo, sizeof(nameInfo), NULL);
+        if (status >= 0)
         {
-          BYTE nameInfo[512] = {0};
-          status = NtQueryObject(hHandle, 0, nameInfo, sizeof(nameInfo), NULL);
-          if (status < 0)
-          {
-            wchar_t msg[64];
-            swprintf_s(msg, 64, L"NtQueryObject (name) failed, status: %ld", status);
-            MessageBox(NULL, msg, L"Error", 0);
-            CloseHandle(hHandle);
-            CloseHandle(hProcess);
-            continue;
-          }
-
           POBJECT_NAME_INFORMATION objName = (POBJECT_NAME_INFORMATION)nameInfo;
           if (objName->Name.Buffer)
           {
             wchar_t msg[512];
-            swprintf_s(msg, 512, L"Found mutex: %s", objName->Name.Buffer);
+            swprintf_s(msg, 512, L"Found object name: %s", objName->Name.Buffer);
             MessageBox(NULL, msg, L"Debug", 0);
           }
-
           if (wcsstr(objName->Name.Buffer, L"_WeChat_App_Instance_Identity_Mutex_Name"))
           {
             CloseHandle(hHandle);
@@ -253,6 +243,7 @@ int CloseWeChatMutex(DWORD targetPid)
             }
           }
         }
+
         CloseHandle(hHandle);
         CloseHandle(hProcess);
       }
